@@ -230,7 +230,7 @@ while {![eof $loadFile]} {
 
 
     # READING GEOMETRIES
-    if {[string first "Z-Matrix orientation:" $readFile]!=-1 || [string first "Input orientation:" $readFile]!=-1} {
+    if {[string first "Z-Matrix orientation:" $readFile]!=-1 || [string first "Input orientation:" $readFile]!=-1  ||  [string first "Standard orientation:" $readFile]!=-1  } {
 
         # write text
         progress_tick  $File [tell $loadFile]
