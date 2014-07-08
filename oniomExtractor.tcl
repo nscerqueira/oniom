@@ -1,34 +1,20 @@
 
-#hello
-
-set version "1.1 (2/7(2014)"
-
-#### HEADER
-puts "   ____  _   _ _____ ____  __  __             _                  _             "
-puts "  / __ \\| \\ | |_   _/ __ \\|  \\/  |           | |                | |            "
-puts " | |  | |  \\| | | || |  | | \\  / |   _____  _| |_ _ __ __ _  ___| |_ ___  _ __ "
-puts " | |  | | . ` | | || |  | | |\\/| |  / _ \\ \\/ / __| '__/ _` |/ __| __/ _ \\| '__|"
-puts " | |__| | |\\  |_| || |__| | |  | | |  __/>  <| |_| | | (_| | (__| || (_) | |   "
-puts "  \\____/|_| \\_|_____\\____/|_|  |_|  \\___/_/\\_\\ __|_|  \\__,_|\\___|\\__\\___/|_|    Version: $version  \n"
-                                                                               
-
-
-#### PROCS
+#### PROCEDURES
 
 proc rect_to_spherical {x y z} {
     list [set rad [expr {hypot($x, hypot($y, $z))}]] [expr {atan2($y,$x)}] [expr {acos($z/($rad+1.0e-20))}]
 }
 
+proc spherical_to_rect {rad phi theta} {
+    list [expr {$rad * cos($phi) * sin($theta)}] [expr {$rad * sin($phi) * sin($theta)}] [expr {$rad * cos($theta)}]
+}
 
- proc spherical_to_rect {rad phi theta} {
-     list [expr {$rad * cos($phi) * sin($theta)}] [expr {$rad * sin($phi) * sin($theta)}] [expr {$rad * cos($theta)}]
- }
 
- proc progress_init {tot} {
-   set ::progress_start     [clock seconds]
-   set ::progress_last      0
-   set ::progress_last_time 0
-   set ::progress_tot       $tot
+proc progress_init {tot} {
+    set ::progress_start     [clock seconds]
+    set ::progress_last      0
+    set ::progress_last_time 0
+    set ::progress_tot       $tot
 }
 
 proc progress_tick {file cur} {
@@ -65,8 +51,7 @@ proc progress_tick {file cur} {
 
 
 proc readONIOM {readFile} {
-
-    # read coordinates, layer info, and redundant
+# read coordinates, layer info, and redundant and return them
     
         set x "" 
         set y ""
@@ -134,118 +119,146 @@ proc readONIOM {readFile} {
 }
 
 
+proc readFile {File} {
+    global loadFile charges input keywords
+
+    ### Open file
+    set loadFile [open $File r]
+
+    ### ProgressBar
+    progress_init [file size $File]
+
+    ###a read File
+    while {![eof $loadFile]} {
+	    set readFile [gets $loadFile]
+
+        ## READ INPUT KEYWORDS
+        if {[string first "Gaussian 09:" $readFile]!=-1} {
+            readKeywords $readFile
+        }
 
 
-################ START
+        ## READ INPUTFILE COORDINATES
+        if {$readFile==" Symbolic Z-matrix:"} {
+            readInput
+        }
 
 
-## READ Data from Shell 
+        ## READING Mulliken Charges
+        if {[string first "Mulliken charges and spin densities:" $readFile]!=-1 || \
+            [string first "Mulliken atomic charges:" $readFile]!=-1 || \
+            [string first "Mulliken charges:" $readFile]!=-1} {
 
-set File     [lindex $argv 0]
-if {[lindex $argv 0]== "--help" ||  $File==""} {
-        puts  " Usage :  tclsh extract.tcl  \[a\] \n"
-        puts  "           \[a\] : Gaussian Output File (*.log)"
-        puts "\n"
-	puts " Developers: Nuno Sousa Cerqueira (nscerque@fc.up.pt)"
-        puts "             Erica Cristina Morena (ericamoreno@unb.br)"
-	puts "\n"
-        exit
+            readMullikenCharges 
+        }
+
+
+        ## READING GEOMETRIES
+        if {[string first "Z-Matrix orientation:" $readFile]!=-1 || \
+            [string first "Input orientation:" $readFile]!=-1  || \
+            [string first "Standard orientation:" $readFile]!=-1  } {
+
+            readGeometries 
+        }
+
+    }
+
+    ### ProgressBar
+    progress_tick  $File [file size $File]
+    close $loadFile
 }
 
 
-## Open file
-set loadFile [open $File r]
+proc readKeywords {readFile} {
+    global keywords loadFile File
 
-# set file size
-progress_init [file size $File]
-
-set standardCount 0 ;# number of standard orientations
-
-
-
-##### READING OUTPUT FILE
-
-while {![eof $loadFile]} {
-	set readFile [gets $loadFile]
-
-
-    # READ INPUT KEYWORDS
     set keywords ""
-    if {[string first "----------------------------------------------------------------------" $readFile]!=-1} {
-        set readFile [gets $loadFile]
-        while {[string first "----------------------------------------------------------------------" $readFile]==-1} {
+
+    # ProgressBar
+    progress_tick $File [tell $loadFile]
+
+    set readFile [gets $loadFile]
+    set end 0
+
+    while {$end==0} {
+
+        if {[string first "%" $readFile]!=-1} {
             set readFile [string range $readFile 1 [string length $readFile]]
-            set keywords "$keywords$readFile"
-            set readFile [gets $loadFile]
+            set keywords "$keywords$readFile \n"
         }
-    }
 
-
-    # READ INPUTFILE COORDINATES
-    if {$readFile==" Symbolic Z-matrix:"} {
-
-        # write text
-        progress_tick $File [tell $loadFile]
-
-        # Obtain charges
-            set charges ""
-            for {set a 0} {$a<=2} {incr a} {
+        if {[string first "#" $readFile]!=-1} {
+            while {[string first "--" $readFile]==-1} {
+                set readFile [string range $readFile 1 [string length $readFile]]
+                set keywords "$keywords$readFile"
                 set readFile [gets $loadFile]
-                set charges "[lappend charges [lindex $readFile 2] [lindex $readFile 5]] "
             }
-
-        # Obtain atoms Data and coordinates
-            set atomCount 1 
-            set readFile [gets $loadFile]
-            while {$readFile!=" "} {
-		        # put data in memory
-		        set data [readONIOM $readFile]
-                dict set input $atomCount charge [lindex $data 0]
-                dict set input $atomCount pdbName [lindex $data 1]
-                dict set input $atomCount atomType [lindex $data 2]
-                dict set input $atomCount resName [lindex $data 3]
-                dict set input $atomCount resid [lindex $data 4]
-                dict set input $atomCount x [lindex $data 5]
-                dict set input $atomCount y [lindex $data 6]
-                dict set input $atomCount z [lindex $data 7]
-                dict set input $atomCount redundant [lindex $data 8]
-                dict set input $atomCount layer [lindex $data 9]
-
-                incr atomCount
-
-            set readFile [gets $loadFile]
-            }
-    }
-
-
-
-    # READING Mulliken Charges if exist
-    if {[string first "Mulliken charges and spin densities:" $readFile]!=-1 || [string first "Mulliken atomic charges:" $readFile]!=-1 || [string first "Mulliken charges:" $readFile]!=-1} {
-        set readFile [gets $loadFile]
-        for {set i 1} {$i<=[dict size $input]} {incr i} {
-             set readFile [gets $loadFile]
-             dict set Mcharge $i charge [lindex $readFile 2]
+            set end 1
         }
+        set readFile [gets $loadFile]
+    }
+}
+
+proc readInput {} {
+    global loadFile File charges input keywords 
+    
+    # ProgressBar
+    progress_tick $File [tell $loadFile]
+
+    # Obtain charges
+    set charges ""
+    for {set a 0} {$a<=2} {incr a} {
+        set readFile [gets $loadFile]
+        set charges "[lappend charges [lindex $readFile 2] [lindex $readFile 5]] "
     }
 
+    # Obtain atoms Data and coordinates
+    set atomCount 1 
+    set readFile [gets $loadFile]
+    while {$readFile!=" "} {
+        set data [readONIOM $readFile]
+        dict set input $atomCount charge [lindex $data 0]
+        dict set input $atomCount pdbName [lindex $data 1]
+        dict set input $atomCount atomType [lindex $data 2]
+        dict set input $atomCount resName [lindex $data 3]
+        dict set input $atomCount resid [lindex $data 4]
+        dict set input $atomCount x [lindex $data 5]
+        dict set input $atomCount y [lindex $data 6]
+        dict set input $atomCount z [lindex $data 7]
+        dict set input $atomCount redundant [lindex $data 8]
+        dict set input $atomCount layer [lindex $data 9]
+        incr atomCount
+        set readFile [gets $loadFile]
+    }
 
-    # READING GEOMETRIES
-    if {[string first "Z-Matrix orientation:" $readFile]!=-1 || [string first "Input orientation:" $readFile]!=-1  ||  [string first "Standard orientation:" $readFile]!=-1  } {
+}
 
-        # write text
-        progress_tick  $File [tell $loadFile]
+proc readMullikenCharges {} {
+    global loadFile input Mcharge
+    set readFile [gets $loadFile]
+    for {set i 1} {$i<=[dict size $input]} {incr i} {
+        set readFile [gets $loadFile]
+        dict set Mcharge $i charge [lindex $readFile 2]
+    }
+}
 
-        # puts "Reading Standard  $standardCount"
-        incr standardCount
+proc readGeometries {} {
+    global loadFile File standardCount xyz input xyzCount
 
-        for {set a 0} {$a<=4} {incr a} {set readFile [gets $loadFile]}
-            set xyzCount 1
+    # Progress Bar
+    progress_tick  $File [tell $loadFile]
 
-            ## open input dic and retries atom data
-            dict for {id info} $input {
-                dict with info {
+    # increment geometry number
+    incr standardCount
 
-                #create dictionary for standard
+    # read header
+    for {set a 0} {$a<=4} {incr a} {set readFile [gets $loadFile]}
+    
+    # read Geometry
+    set xyzCount 1
+
+    dict for {id info} $input {
+        dict with info {
                  dict set xyz $standardCount-$xyzCount x [lindex $readFile 3]
                  dict set xyz $standardCount-$xyzCount y [lindex $readFile 4]
                  dict set xyz $standardCount-$xyzCount z [lindex $readFile 5]
@@ -256,76 +269,37 @@ while {![eof $loadFile]} {
                  dict set xyz $standardCount-$xyzCount resid $resid
                  dict set xyz $standardCount-$xyzCount redundant $redundant
                  dict set xyz $standardCount-$xyzCount layer $layer
-                }
-                incr xyzCount
-                set readFile [gets $loadFile]
-            }
+        }
+    incr xyzCount
+    set readFile [gets $loadFile]
     }
 }
 
+proc savePDBGeometries {fileName} {
 
-progress_tick  $File [file size $File]
-close $loadFile
-
-
-
-
-
-
-######## MAKE Files
-
-puts "\nCreating Files:"
-
-
-set fileName [file rootname $File]
-
-
-## Extract Input File
-#    set saveCOM [open $fileName-input-initial-all.com w]
-#
-    # Puts initial Data
-#    puts $saveCOM $keywords
-#    puts $saveCOM ""
-#    puts $saveCOM "Title"
-#    puts $saveCOM ""
-#    puts $saveCOM $charges
-
-
-#    dict for {id info} $input {
-#        dict with info {
-#         set atomData "$atomType-$charge\(PDBName=$pdbName,ResName=$resName,ResNum=$resid\)"
-#         set coord "[format "%10s"  [format "%5.5f" $x]] [format "%10s" [format "%5.5f" $y]] [format "%10s"  [format "%5.5f" $z]]"
-#         puts $saveCOM " [format "%-60s" $atomData] [format "%-4s" $redundant] $coord $layer"
-#        }
-#    }
-#    puts $saveCOM ""
-#    close $saveCOM
-
-
-
-## PRINT GEOMETRIES in PDB FORMAT
-
+    global xyz xyzCount count
 
     set savePDB [open $fileName-all-Geometries.pdb w]
-    puts -nonewline "\nAll Geometries in PDB format                : $fileName-all-Geometries.pdb  |"; set countC 1
+    #puts "All Geometries in PDB format                : $fileName-all-Geometries.pdb  |"; set countC 1
 
     # Calculate the number of Steps
     set optSteps  [expr 1 + ([dict size $xyz]/$xyzCount)]
 
     # Print geometries
     set count 1
-    set countC 0
+    #set countC 0
     puts $savePDB "HEADER"
     dict for {id1 info} $xyz {
 
      dict with info {
         set idnew [string map {- " "} $id1]
 
-        # write text
-        if {$count!=[lindex $idnew 0]} {incr countC; if {$countC==10} {puts -nonewline "#";set countC 0} else { puts -nonewline $countC; flush stdout}} 
-        if {$count!=[lindex $idnew 0]} {puts $savePDB "END"; puts $savePDB "HEADER"; puts $savePDB "Standard Geometry [lindex $idnew 0]"; set count [lindex $idnew 0]}
+        # write text for counting
+        #if {$count!=[lindex $idnew 0]} {incr countC; if {$countC==10} {puts -nonewline "#";set countC 0} else { puts -nonewline $countC; flush stdout}} 
+        if {$count!=[lindex $idnew 0]} {puts -nonewline stdout "All Geometries in PDB format                : $fileName-all-Geometries.pdb  [format %-8s ($count/[expr $optSteps-1])]\r";  flush stdout}
 
         ## Create PDB format
+        if {$count!=[lindex $idnew 0]} {puts $savePDB "END"; puts $savePDB "HEADER"; puts $savePDB "Standard Geometry [lindex $idnew 0]"; set count [lindex $idnew 0]}
         set chain "X"
         if {[lindex $layer 0]=="L"} {set chain L} elseif {[lindex $layer 0]=="H"} {set chain H} else {set chain "M"}
         set atomType [lindex [string map {- " "}  $atomType] 0]
@@ -334,30 +308,108 @@ set fileName [file rootname $File]
      }
     }
 
-    puts -nonewline "|"
     puts $savePDB "END"
     close $savePDB
+}
 
 
-## PRINT NEW COM Complete WITH LAST GEOMETRIES
+proc infoCharges {} {
 
-   
+    global xyz xyzCount 
+
+    # Calculate the number of Steps
+    set optSteps  [expr 1 + ([dict size $xyz]/$xyzCount)]
+
+    # Gather residues information
+    set resIdList ""
+    set resNameList ""
+    set resNameListHL ""
+    set resNameListLL ""
+    set chargePositiveResidues "ARG LYS HIP"
+    set chargeNegativeResidues "GLU ASP"
+    set neutralResidues "PRO GLN SER TRP HOH CYS TYR ILE ASN VAL GLY HIS PHE ALA LEU THR MET"
+    set unknownResidues ""
+    set chargeUnknown 0
+    set chargeNegative 0
+    set chargePositive 0
+    set chargeUnknownHL 0
+    set chargeNegativeHL 0
+    set chargePositiveHL 0
+
+    set resUnknown 0
+    set resNegative 0
+    set resPositive 0
+    set resUnknownHL 0
+    set resNegativeHL 0
+    set resPositiveHL 0
+
+    for {set a 1} {$a<=[expr $xyzCount -1]} {incr a} {
+
+        set pdbName [dict get $xyz $optSteps-$a pdbName]
+        set resName [dict get $xyz $optSteps-$a resName]
+        set resid [dict get $xyz $optSteps-$a resid]
+        set layer [dict get $xyz $optSteps-$a layer]
+        set charge [dict get $xyz $optSteps-$a charge]
+
+        # make residues list
+        if {[lsearch -exact $resIdList $resid]==-1} {
+            set resNameList [lappend resNameList $resName]
+            set resIdList   [lappend resIdList $resid]
+
+            if {$layer=="L" || $layer=="l"} {set resNameListLL [lappend resNameListLL $resName]}
+            if {$layer=="H" || $layer=="h"} {set resNameListHL [lappend resNameListHL $resName]}
+
+            # Calculate charges
+            if       {[lsearch $chargePositiveResidues $resName]!=-1} {set chargePositive [expr $chargePositive + $charge]; incr resPositive
+            } elseif {[lsearch $chargeNegativeResidues $resName]!=-1} {set chargeNegative [expr $chargeNegative + $charge]; incr resNegative
+            } elseif {[lsearch $neutralResidues $resName]!=-1       } {
+            } else   {set unknownResidues "$unknownResidues $resName"; set chargeUnknown [expr $chargeUnknown + $charge]; incr resUnknown}
+
+
+            # charges HL
+            if {[lindex $layer 0]=="H"} {
+                puts "ok"
+                if {[lsearch $chargePositiveResidues $resName]!=-1} {set chargePositiveHL [expr $chargePositiveHL + $charge]; incr resPositiveHL
+                } elseif {[lsearch $chargeNegativeResidues $resName]!=-1} {set chargeNegativeHL [expr $chargeNegativeHL + $charge]; incr resNegativeHL
+                } else   {set chargeUnknownHL [expr $chargeUnknownHL + $charge]; incr resUnknownHL  }
+
+            }
+
+
+
+
+        }
+
+
+    }
+
+    puts "Number of Residues : [expr $resPositive +  $resNegative + $resUnknown ] ([expr $chargePositive +  $chargeNegative + $chargeUnknown ])" 
+    puts "Positive Residues  : $resPositive ($chargePositive).  High Level : $resPositiveHL ($chargePositiveHL) ($chargePositiveResidues)"
+    puts "Negative Residues  : $resNegative ($chargeNegative).  High Level : $resNegativeHL ($chargeNegativeHL) ($chargeNegativeResidues)"
+    puts "Unknown  Residues  : $resUnknown  ($chargeUnknown).   High Level : $resUnknownHL  ($chargeUnknownHL) ($unknownResidues)"
+
+    puts "\n"
+
+}
+
+proc saveInputLastGeometryAll {fileName} {
+
+    global xyz xyzCount charges count Mcharge keywords
+
     set newCOM [open $fileName-input-final-all.com w]
-    puts -nonewline "\nInput File with final geometry (all)        : $fileName-input-final-all.com  |"
+    puts -nonewline "\nInput File with final geometry (all)        : $fileName-input-final-all.com"
 
-   # Puts initial Data
-   # puts $newCOM $keywords
-   # puts $newCOM ""
-   # puts $newCOM "Title"
-   # puts $newCOM ""
-   puts $newCOM  "$charges"
+    # Puts initial Data
+     puts $newCOM $keywords
+     puts $newCOM ""
+     puts $newCOM "Title"
+     puts $newCOM ""
+     puts $newCOM  "$charges"
 
     # Calculate the number of Steps
     set optSteps  [expr 1 + ([dict size $xyz]/$xyzCount)]
 
     # Print geometries
-    
-
     for {set a 1} {$a<=[expr $xyzCount -1]} {incr a} {
 
         set x [dict get $xyz $optSteps-$a x]
@@ -369,6 +421,7 @@ set fileName [file rootname $File]
         set atomType [dict get $xyz $optSteps-$a atomType]
         set layer [dict get $xyz $optSteps-$a layer]
         set charge [dict get $xyz $optSteps-$a charge]
+        set redundant [dict get $xyz $optSteps-$a redundant]
 
         ## Create PDB format
         set chain "X"
@@ -384,23 +437,25 @@ set fileName [file rootname $File]
         }
 
     }
-    puts -nonewline "1|"
-    close $savePDB
+    close $newCOM
+}
 
 
 
+proc saveInputLastGeometryHL {fileName} {
 
-## PRINT NEW COM FILE  WITH LAST Geometry of High Level
+    global xyz xyzCount charges count Mcharge keywords
 
+    
     set newHCOM [open $fileName-input-final-highlevel.com w]
     set count 0
-    puts -nonewline "\nInput File with final geometry (high-level) : $fileName-input-final-highlevel.com  |"
+    puts -nonewline "\nInput File with final geometry (high-level) : $fileName-input-final-highlevel.com"
 
     # Puts initial Data
-    #puts $newHCOM "keywords"
-    #puts $newHCOM ""
-    #puts $newHCOM "Title"
-    #puts $newHCOM ""
+    puts $newHCOM "$keywords"
+    puts $newHCOM ""
+    puts $newHCOM "Title"
+    puts $newHCOM ""
     puts $newHCOM "[lindex $charges [expr [llength $charges] -2]] [lindex $charges [expr [llength $charges] -1]]"
 
     # Calculate the number of Steps
@@ -456,13 +511,102 @@ set fileName [file rootname $File]
 
     }
     puts $newHCOM ""
-    puts -nonewline "1|"
     close $newHCOM
 
+}
 
-    
-    
-puts "\nDone!"
+proc saveInputFile {fileName} {
+
+    global input keywords charges
+
+    puts -nonewline "\nOriginal Input File                         : $fileName-input-inital-all.com"
+
+    set saveCOM [open $fileName-input-initial-all.com w]
+
+    # Puts initial Data
+    puts $saveCOM $keywords
+    puts $saveCOM ""
+    puts $saveCOM "Title"
+    puts $saveCOM ""
+    puts $saveCOM $charges
+
+    dict for {id info} $input {
+        dict with info {
+         set atomData "$atomType-$charge\(PDBName=$pdbName,ResName=$resName,ResNum=$resid\)"
+         set coord "[format "%10s"  [format "%5.5f" $x]] [format "%10s" [format "%5.5f" $y]] [format "%10s"  [format "%5.5f" $z]]"
+         puts $saveCOM " [format "%-60s" $atomData] [format "%-4s" $redundant] $coord $layer"
+        }
+    }
+    puts $saveCOM ""
+    close $saveCOM
+}
+
+
+
+
+
+
+################ START
+
+
+set version "1.1 (2/7(2014)"
+
+#### HEADER
+puts "   ____  _   _ _____ ____  __  __             _                  _             "
+puts "  / __ \\| \\ | |_   _/ __ \\|  \\/  |           | |                | |            "
+puts " | |  | |  \\| | | || |  | | \\  / |   _____  _| |_ _ __ __ _  ___| |_ ___  _ __ "
+puts " | |  | | . ` | | || |  | | |\\/| |  / _ \\ \\/ / __| '__/ _` |/ __| __/ _ \\| '__|"
+puts " | |__| | |\\  |_| || |__| | |  | | |  __/>  <| |_| | | (_| | (__| || (_) | |   "
+puts "  \\____/|_| \\_|_____\\____/|_|  |_|  \\___/_/\\_\\ __|_|  \\__,_|\\___|\\__\\___/|_|    Version: $version  \n"
+       
+
+#### READ Data from Shell 
+
+set File     [lindex $argv 0]
+if {[lindex $argv 0]== "--help" ||  $File==""} {
+        puts  " Usage :  tclsh extract.tcl  \[a\] \n"
+        puts  "           \[a\] : Gaussian Output File (*.log)"
+        puts "\n"
+        puts " Developers: Nuno Sousa Cerqueira (nscerque@fc.up.pt)"
+        puts "             Erica Cristina Morena (ericamoreno@unb.br)"
+	    puts "\n"
+        exit
+}
+
+
+    set standardCount 0 ;# number of standard orientations
+
+
+#### READFILE
+readFile $File
+
+
+#### INFO FILES
+#puts "\nInfo:\n"
+#infoCharges
+
+#### MAKE Files
+puts "Creating Files:\n"
+set fileName [file rootname $File]
+
+
+#### PRINT GEOMETRIES IN PDB FORMAT
+savePDBGeometries $fileName
+
+
+#### PRINT INPUT WITH LAST GEOMETRY - ALL
+saveInputLastGeometryAll $fileName
+
+
+#### Print INPUT LAST GEOMETRY - HIGH LEVEL
+saveInputLastGeometryHL $fileName
+
+
+#### PRINT INPUT FILE
+saveInputFile $fileName
+
+
+puts "\n\nDone!"
 
 
 
