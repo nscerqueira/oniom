@@ -198,7 +198,7 @@ proc readKeywords {readFile} {
         }
 
 
-         if {[string first "--" $readFile]!=-1 && end 1} {
+         if {[string first "--" $readFile]!=-1 && $end==1} {
             while {[string first "--" $readFile]==-1} {
                 set tile "$title\n$readFile"
                 set readFile [gets $loadFile]
