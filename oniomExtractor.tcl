@@ -529,7 +529,6 @@ proc saveInputLastGeometryHL {fileName} {
     }
     puts $newHCOM ""
     close $newHCOM
-
 }
 
 proc saveInputFile {fileName} {
