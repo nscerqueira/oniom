@@ -211,7 +211,7 @@ proc readInput {} {
 
     while {[lindex $readFile 0]=="Charge"} {
         set readFile [gets $loadFile]
-        regsub -all "=" $readFile " " ReadFile
+        regsub -all "=" $readFile " " readFile
         set charges "[lappend charges [lindex $readFile 1] [lindex $readFile 3]] "
     }
 
