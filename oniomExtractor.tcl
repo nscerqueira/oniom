@@ -195,6 +195,7 @@ proc readKeywords {readFile} {
                 set keywords "$keywords$readFile"
                 set readFile [gets $loadFile]
             }
+            set readFile [gets $loadFile]
             set end 1
         }
 
