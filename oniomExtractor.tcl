@@ -210,9 +210,10 @@ proc readInput {} {
     set readFile [gets $loadFile]
 
     while {[lindex $readFile 0]=="Charge"} {
-        set readFile [gets $loadFile]
         regsub -all "=" $readFile " " readFile
         set charges "[lappend charges [lindex $readFile 1] [lindex $readFile 3]] "
+        set readFile [gets $loadFile]
+
     }
 
     # Obtain atoms Data and coordinates
