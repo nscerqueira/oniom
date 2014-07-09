@@ -210,14 +210,14 @@ proc readInput {} {
     set readFile [gets $loadFile]
 
     while {[lindex $readFile 0]=="Charge"} {
-        set readFile [gets $loadFile]
-        regsub -all "=" $readFile " " ReadFile
+        regsub -all "=" $readFile " " readFile
         set charges "[lappend charges [lindex $readFile 1] [lindex $readFile 3]] "
+        set readFile [gets $loadFile]
+
     }
 
     # Obtain atoms Data and coordinates
     set atomCount 1 
-    set readFile [gets $loadFile]
     while {$readFile!=" "} {
         set data [readONIOM $readFile]
         dict set input $atomCount charge [lindex $data 0]
