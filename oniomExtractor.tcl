@@ -178,10 +178,11 @@ proc readKeywords {readFile} {
     # ProgressBar
     progress_tick $File [tell $loadFile]
 
-    set readFile [gets $loadFile]
     set end 0
 
     while {$end!=2} {
+
+        set readFile [gets $loadFile]
 
         if {[string first "%" $readFile]!=-1} {
             set readFile [string range $readFile 1 [string length $readFile]]
@@ -199,17 +200,16 @@ proc readKeywords {readFile} {
 
 
          if {[string first "--" $readFile]!=-1 && $end==1} {
+            set readFile [gets $loadFile]
             while {[string first "--" $readFile]==-1} {
                 set title "$title\n$readFile"
                 set readFile [gets $loadFile]
             }
+            set title "$title\n"
             set end 2
         }
 
 
-
-
-        set readFile [gets $loadFile]
     }
 }
 
@@ -418,9 +418,7 @@ proc saveInputLastGeometryAll {fileName} {
 
     # Puts initial Data
      puts $newCOM $keywords
-     puts $newCOM ""
      puts $newCOM $title
-     puts $newCOM ""
      puts $newCOM  "$charges"
 
     # Calculate the number of Steps
@@ -470,9 +468,7 @@ proc saveInputLastGeometryHL {fileName} {
 
     # Puts initial Data
     puts $newHCOM "$keywords"
-    puts $newHCOM ""
     puts $newHCOM $title
-    puts $newHCOM ""
     puts $newHCOM "[lindex $charges [expr [llength $charges] -2]] [lindex $charges [expr [llength $charges] -1]]"
 
     # Calculate the number of Steps
@@ -541,9 +537,7 @@ proc saveInputFile {fileName} {
 
     # Puts initial Data
     puts $saveCOM $keywords
-    puts $saveCOM ""
     puts $saveCOM $title
-    puts $saveCOM ""
     puts $saveCOM $charges
 
     dict for {id info} $input {
