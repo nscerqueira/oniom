@@ -218,7 +218,6 @@ proc readInput {} {
 
     # Obtain atoms Data and coordinates
     set atomCount 1 
-    set readFile [gets $loadFile]
     while {$readFile!=" "} {
         set data [readONIOM $readFile]
         dict set input $atomCount charge [lindex $data 0]
