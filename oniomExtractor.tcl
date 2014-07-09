@@ -170,9 +170,10 @@ proc readFile {File} {
 
 
 proc readKeywords {readFile} {
-    global keywords loadFile File
+    global keywords loadFile File title
 
     set keywords ""
+    set title ""
 
     # ProgressBar
     progress_tick $File [tell $loadFile]
@@ -180,7 +181,7 @@ proc readKeywords {readFile} {
     set readFile [gets $loadFile]
     set end 0
 
-    while {$end==0} {
+    while {$end!=2} {
 
         if {[string first "%" $readFile]!=-1} {
             set readFile [string range $readFile 1 [string length $readFile]]
@@ -195,6 +196,19 @@ proc readKeywords {readFile} {
             }
             set end 1
         }
+
+
+         if {[string first "--" $readFile]!=-1 && end 1} {
+            while {[string first "--" $readFile]==-1} {
+                set tile "$title\n$readFile"
+                set readFile [gets $loadFile]
+            }
+            set end 2
+        }
+
+
+
+
         set readFile [gets $loadFile]
     }
 }
@@ -397,7 +411,7 @@ proc infoCharges {} {
 
 proc saveInputLastGeometryAll {fileName} {
 
-    global xyz xyzCount charges count Mcharge keywords
+    global xyz xyzCount charges count Mcharge keywords title
 
     set newCOM [open $fileName-input-final-all.com w]
     puts -nonewline "\nInput File with final geometry (all)        : $fileName-input-final-all.com"
@@ -405,7 +419,7 @@ proc saveInputLastGeometryAll {fileName} {
     # Puts initial Data
      puts $newCOM $keywords
      puts $newCOM ""
-     puts $newCOM "Title"
+     puts $newCOM $title
      puts $newCOM ""
      puts $newCOM  "$charges"
 
@@ -447,7 +461,7 @@ proc saveInputLastGeometryAll {fileName} {
 
 proc saveInputLastGeometryHL {fileName} {
 
-    global xyz xyzCount charges count Mcharge keywords
+    global xyz xyzCount charges count Mcharge keywords title
 
     
     set newHCOM [open $fileName-input-final-highlevel.com w]
@@ -457,7 +471,7 @@ proc saveInputLastGeometryHL {fileName} {
     # Puts initial Data
     puts $newHCOM "$keywords"
     puts $newHCOM ""
-    puts $newHCOM "Title"
+    puts $newHCOM $title
     puts $newHCOM ""
     puts $newHCOM "[lindex $charges [expr [llength $charges] -2]] [lindex $charges [expr [llength $charges] -1]]"
 
@@ -520,7 +534,7 @@ proc saveInputLastGeometryHL {fileName} {
 
 proc saveInputFile {fileName} {
 
-    global input keywords charges
+    global input keywords charges title
 
     puts -nonewline "\nOriginal Input File                         : $fileName-input-inital-all.com"
 
@@ -529,7 +543,7 @@ proc saveInputFile {fileName} {
     # Puts initial Data
     puts $saveCOM $keywords
     puts $saveCOM ""
-    puts $saveCOM "Title"
+    puts $saveCOM $title
     puts $saveCOM ""
     puts $saveCOM $charges
 
